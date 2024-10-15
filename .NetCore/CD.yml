@@ -1,0 +1,35 @@
+trigger: none
+pool:
+  vmImage: ubuntu-latest
+
+parameters:                                                  # To seperate concerns of different env
+  - name: targetEnvironments
+    displayName: Deploy into which environment.
+    type: string
+    default: Test
+    values:
+      - Development
+      - Test
+variables:                                                     # Using different variable group based on env
+- ${{ if eq(parameters.targetEnvironments,'Development') }}:
+  - group: ''                                                # Name of variable group for dev env
+- ${{ if eq(parameters.targetEnvironments,'Test') }}:
+  - group: ''                                                 # Name of variable group for test env
+- name: 'solutionPath'
+  value: ''                                         # path should be :-  $(Build.SourcesDirectory)/path/to/.sln
+- name: 'dockerfilePath'
+  value: '$(solutionPath)/SBOM Api/Dockerfile'      # path should be :- $(solutionPath)/path/to/dockerfile
+- name: LatestImageTag
+  value: $(Build.SourceBranchName)-latest          # Add tags if necessary
+
+steps:
+ - task: AzureContainerApps@1                    # Task to deploy image to container app
+   displayName: "Azure Container Apps Deploy"
+   inputs:
+    azureSubscription: '$(connectedServiceNameARM)'    # Service connection name
+    imageToDeploy: ''                          # It should be like :- $(containerRegistryLoginServer)/$(repoName):$(LatestImageTag)
+    containerAppName: '$(containerAppName)'
+    resourceGroup: '$(resourceGroup)'
+    containerAppEnvironment: '$(containerAppEnvironment)'
+    environmentVariables: |                                  # Set env variables if any in app.settings
+      ApplicationInsights__ConnectionString=$(AppInsightsConnectionString)

@@ -1,0 +1,53 @@
+trigger: none
+parameters:
+  - name: targetEnvironments                             # To seperate concerns of different env 
+    displayName: Deploy into which environment.
+    type: string
+    default: Test
+    values:
+      - Development
+      - Test
+stages:
+  - stage: deploy_dev
+    displayName: Deploy on dev
+    jobs:  
+      - deployment: DeployJob
+        displayName: Deploy on development
+        ${{ if eq(parameters.targetEnvironments,'Development') }}:      # conditioning env based on parameter
+         environment: Development
+        ${{ if eq(parameters.targetEnvironments,'Test') }}:
+         environment: Test
+        pool:
+          vmImage: ubuntu-latest
+        variables:
+          - ${{ if eq(parameters.targetEnvironments,'Development') }}:  # Using different variable group based on env
+            - group: Azure_Static_Web_App_Development                   # Name of variable group for dev env
+          - ${{ if eq(parameters.targetEnvironments,'Test') }}:
+            - group: Azure_Static_Web_App_Test                          # Name of variable group for test env
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+               - task: DownloadPipelineArtifact@1                    # It will download artifacts from latest succesfully build pipline
+                 inputs:
+                  buildType: 'specific'             
+                  project: 'CI_CD_Scripts'         
+                  pipeline: ''                                        # pipline-id of CI pipline
+                  buildVersionToDownload: 'latest'                    
+                  artifactName: 'drop' 
+                  downloadPath: '$(Pipeline.Workspace)/'
+                   
+               - task: AzureStaticWebApp@0                           # Deploying build to static web app
+                 displayName: Deploy Azure Static Web App
+                 inputs:
+                    skip_app_build: true
+                    skip_api_build: true
+                    azure_static_web_apps_api_token: $(Token_Name)  # Name of variable which containes token in variable group   
+                    workingDirectory: $(Pipeline.Workspace) 
+                    app_location: ""                                # Path should be :- projectName/browser
+                    verbose: true                                             # Keep it true for more precise logs
+                    ${{ if eq(parameters.targetEnvironments,'Development') }}:
+                      production_branch: "main"
+                                
+               
+ ###### End of Repository/Build Configurations ######

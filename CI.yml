@@ -1,0 +1,111 @@
+pr:
+  branches:
+    include:
+      - main
+trigger:
+  branches:
+    include:
+      - main
+stages:
+  # Build Stage
+  - stage: build
+    displayName: Build
+    jobs:
+      - job: Build
+        displayName: Build
+        condition: or(eq(variables['Build.Reason'], 'Manual'),or(eq(variables['Build.Reason'], 'PullRequest'),eq(variables['Build.Reason'], 'IndividualCI')))
+        pool:
+          vmImage: ubuntu-latest
+        # variables:                      # Add variable group for both dev and test enviornment to not to seperate different jobs
+        #   - group: "variable group" 
+        steps:
+          - checkout: self
+            submodules: true
+
+          - task: NodeTool@0             # Installing node on pipeline environment
+            inputs:
+              versionSource: "spec"
+              versionSpec: "20.x"
+              checkLatest: true
+
+          - task: Bash@3                # Installing Angular-CLI on pipeline enviornment
+            inputs:
+              targetType: "inline"
+              script: |
+                npm install -g @angular/cli
+              workingDirectory: ""             # Specify WorkDir name. Ex: "ProjectName"
+            displayName: "Install Angular CLI"
+
+          - task: Bash@3                # Installing all node-modules and making build
+            inputs:
+              targetType: "inline"
+              script: |
+                node -v
+                npm -v
+                # install packages
+                npm install
+                npm run build
+              workingDirectory: ""    # Specify WorkDir name. Ex: "ProjectName"
+            displayName: "Install npm and build app"
+
+          # Copy staticwebapp.config.json 
+          - task: CopyFiles@2                          # Copy staticwebapp.config to build folder
+            displayName: Copy staticwebapp config file
+            inputs:
+              SourceFolder: ""                          # Specify WorkDir name. Ex: "ProjectName"
+              Contents: |
+                staticwebapp.config.json
+              TargetFolder:      # Path should be :- WorkDir/dist/projectName/browser 
+
+          # Publish Pipeline Artifact
+          - task: PublishPipelineArtifact@1                 # Publishing artifact to use same build in CD
+            displayName: "Publish Pipeline Artifact (Frontend Build)"
+            inputs:
+              targetPath:            # Path should be :- WorkDir/dist
+              artifact: "drop"
+              publishLocation: "pipeline"
+
+      - job: Unit_Tests_and_Coverage        # Job for checking unit tests and code coverage
+        displayName: Unit Tests and coverage
+        condition: succeeded()
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - task: NodeTool@0               # Installing the node
+            inputs:
+              versionSpec: "20.x"
+            displayName: "Install Node.js"
+  
+          - task: Bash@3
+            inputs:
+              targetType: "inline"          # Installing a CLI
+              script: |
+                npm install -g @angular/cli
+              workingDirectory: ""             # Specify WorkDir name. Ex: "ProjectName"
+            displayName: "Install Angular CLI"
+
+          - task: Bash@3                      # Checking node version and installing all node modules
+            inputs:
+              targetType: "inline"
+              script: |
+                # check node and npm versions
+                node -v
+                npm -v
+    
+                # install packages
+                npm install
+              workingDirectory: ""       # Specify WorkDir name. Ex: "ProjectName"
+            displayName: "Install npm packages"
+  
+          - task: Bash@3                     # Use Karma config file to generate "corbetura.coverage.xml" to publish code coverage
+            inputs:
+              targetType: "inline"
+              script: |
+                ng test --karma-config=karma-ci.conf.js --code-coverage=true
+              workingDirectory: ""      # Specify WorkDir name. Ex: "ProjectName"
+     
+          - task: PublishCodeCoverageResults@2           # publish code coverager using generated "corbetura.coverage.xml"
+            condition: succeededOrFailed()
+            inputs:
+              codeCoverageTool: "Cobertura"
+              summaryFileLocation: ""        # Path should be :- WorkDir/coverage/projectName/cobertura-coverage.xml
